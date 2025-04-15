@@ -1,123 +1,143 @@
-import pygame, time, math
+import pygame
+import random
+import sys
 
-# Define constants
-FPS = 30  # Frames Per Second
-SCREEN_WIDTH = 1280
-SCREEN_HEIGHT = 720
-BALL_WIDTH = 16
-BALL_HEIGHT = 16
-PADDLE_WIDTH = 144
-PADDLE_HEIGHT = 32
-BRICK_WIDTH = 0
-BRICK_HEIGHT = 0
-SPEED_INCREASE_FACTOR = 1.1  # Factor to increase speed
-SPEED_DECREASE_FACTOR = 0.9  # Factor to decrease speed
-START_DELAY = 3  # Start delay in seconds
-score = 0
-
-# Initialize global variables
-def initialize_game():
-    global ball_x, ball_y, ball_speed_x, ball_speed_y, paddle_x, paddle_y, game_status_msg, first_bounce, bricks, AANTAL_KOLOMMEN, AANTAL_RIJEN, BRICK_WIDTH, BRICK_HEIGHT, brick_x, brick_y, brick_img_scaled
-    global speed_change_count, increasing_speed, score
-
-    # Block size
-    BRICK_WIDTH = SCREEN_WIDTH / AANTAL_KOLOMMEN
-    BRICK_HEIGHT = int(BRICK_WIDTH * 0.25)
-
-    # Define global variables
-    ball_x = SCREEN_WIDTH // 2
-    ball_y = 600
-    ball_speed_x = 6
-    ball_speed_y = ball_speed_x * 2.834583765
-    paddle_x = (SCREEN_WIDTH - PADDLE_WIDTH) // 2
-    paddle_y = SCREEN_HEIGHT - 40
-    game_status_msg = "Links druk [A] rechts druk [D]"
-    first_bounce = False
-    brick_x = []
-    brick_y = []
-
-    # Initialize speed change counters
-    speed_change_count = 0
-    increasing_speed = True  # Start with increasing speed
-
-    # Create list of bricks
-    bricks = []
-    for i in range(AANTAL_RIJEN):
-        row = []
-        for j in range(AANTAL_KOLOMMEN):
-            row.append(True)  # True means the brick is present
-            brick_x.append(j * BRICK_WIDTH)
-            brick_y.append(i * BRICK_HEIGHT + 100)
-        bricks.append(row)
-
-    brick_img_scaled = pygame.transform.scale(brick_img, (int(BRICK_WIDTH), int(BRICK_HEIGHT)))
-
-    # Reset score
-    score = 0
-
-# Initialize game
+# Initialize pygame
 pygame.init()
-font = pygame.font.SysFont('default', 64)
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN)
-fps_clock = pygame.time.Clock()
 
-# Read images
-spritesheet = pygame.image.load('Breakout_Tile_Free.png').convert_alpha()
+# Screen settings
+WIDTH, HEIGHT = 1000, 700
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Duck Hunt Deluxe - Havo 4")
 
-# Add ball
-ball_img = pygame.Surface((64, 64), pygame.SRCALPHA)  # Create new image
-ball_img.blit(spritesheet, (0, 0), (1403, 652, 64, 64))  # Copy part of sheet to image
-ball_img = pygame.transform.scale(ball_img, (BALL_WIDTH, BALL_HEIGHT))
+# Load assets
+background = pygame.image.load("background.jpg")
+background = pygame.transform.scale(background, (WIDTH, HEIGHT))
 
-# Add paddle
-paddle_img = pygame.Surface((243, 64), pygame.SRCALPHA)
-paddle_img.blit(spritesheet, (0, 0), (1158, 462, 243, 64))
-paddle_img = pygame.transform.scale(paddle_img, (PADDLE_WIDTH, PADDLE_HEIGHT))
+duck_img = pygame.image.load("duck.png")
+duck_img = pygame.transform.scale(duck_img, (80, 80))
 
-# Add bricks
-brick_img = pygame.Surface((380, 130), pygame.SRCALPHA)
-brick_img.blit(spritesheet, (0, 0), (0, 130, 380, 130))
+shoot_sound = pygame.mixer.Sound("shoot.wav")
 
-# Add text-startscreen
-def draw_text(text, font, color, surface, x, y):
-    text_obj = font.render(text, True, color)
-    text_rect = text_obj.get_rect()
-    text_rect.topleft = (x, y)
-    surface.blit(text_obj, text_rect)
+# Font
+font = pygame.font.SysFont(None, 48)
+big_font = pygame.font.SysFont(None, 80)
 
-# Create startscreen
-def start_screen():
-    global AANTAL_RIJEN, AANTAL_KOLOMMEN
-    input_active = None
-    row_text = ''
-    col_text = ''
-    input_rect_color = pygame.Color('lightskyblue3')
-    
-    input_font = pygame.font.SysFont('default', 48)
-    while True:
+# Duck class
+class Duck:
+    def __init__(self):
+        self.x = random.randint(0, WIDTH - 80)
+        self.y = random.randint(100, HEIGHT - 150)
+        self.speed_x = random.choice([-5, 5])
+        self.speed_y = random.choice([-2, 2])
+
+    def move(self):
+        self.x += self.speed_x
+        self.y += self.speed_y
+        # Bounce off walls
+        if self.x <= 0 or self.x >= WIDTH - 80:
+            self.speed_x *= -1
+        if self.y <= 50 or self.y >= HEIGHT - 100:
+            self.speed_y *= -1
+
+    def draw(self, surface):
+        surface.blit(duck_img, (self.x, self.y))
+
+    def get_rect(self):
+        return pygame.Rect(self.x, self.y, 80, 80)
+
+# Game variables
+ducks = [Duck() for _ in range(3)]
+score = 0
+missed_shots = 0
+max_misses = 5
+
+clock = pygame.time.Clock()
+
+# Game states
+START = 0
+PLAYING = 1
+GAME_OVER = 2
+state = START
+
+# Functions
+def draw_text(text, size, x, y, center=True):
+    f = pygame.font.SysFont(None, size)
+    img = f.render(text, True, (255, 255, 255))
+    rect = img.get_rect()
+    if center:
+        rect.center = (x, y)
+    else:
+        rect.topleft = (x, y)
+    screen.blit(img, rect)
+
+# Main game loop
+running = True
+while running:
+    screen.fill((0, 0, 0))
+
+    if state == START:
+        screen.blit(background, (0, 0))
+        draw_text("🦆 DUCK HUNT DELUXE 🦆", 80, WIDTH // 2, HEIGHT // 3)
+        draw_text("Klik om te beginnen", 50, WIDTH // 2, HEIGHT // 2)
+        draw_text("Schiet op de eenden voordat je 5 mist!", 40, WIDTH // 2, HEIGHT // 2 + 60)
+        pygame.display.flip()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                return False
+                running = False
             if event.type == pygame.MOUSEBUTTONDOWN:
-                if row_rect.collidepoint(event.pos):
-                    input_active = 'rows'
-                elif col_rect.collidepoint(event.pos):
-                    input_active = 'cols'
-                elif start_button_rect.collidepoint(event.pos):
-                    if row_text.isdigit() and col_text.isdigit():
-                        AANTAL_RIJEN = int(row_text)
-                        AANTAL_KOLOMMEN = int(col_text)
-                        if 6 <= AANTAL_RIJEN <= 20 and AANTAL_KOLOMMEN >= AANTAL_RIJEN + 2:
-                            return True
-            if event.type == pygame.KEYDOWN:
-                if input_active == 'rows':
-                    if event.key == pygame.K_BACKSPACE:
-                        row_text = row_text[:-1]
-                    else:
-                        row_text += event.unicode
-                elif input_active == 'cols':
-                    if event.key == pygame.K_BACKSPACE:
-                        col_text = col_text[:-1]
-                    else:
-                        col_text += event.unicode
+                state = PLAYING
+                score = 0
+                missed_shots = 0
+                ducks = [Duck() for _ in range(3)]
+
+    elif state == PLAYING:
+        screen.blit(background, (0, 0))
+
+        for duck in ducks:
+            duck.move()
+            duck.draw(screen)
+
+        draw_text(f"Score: {score}", 40, 10, 10, center=False)
+        draw_text(f"Missed: {missed_shots}/{max_misses}", 40, 10, 50, center=False)
+
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                shoot_sound.play()
+                hit = False
+                mx, my = pygame.mouse.get_pos()
+                for duck in ducks:
+                    if duck.get_rect().collidepoint(mx, my):
+                        ducks.remove(duck)
+                        ducks.append(Duck())
+                        score += 1
+                        hit = True
+                        break
+                if not hit:
+                    missed_shots += 1
+                    if missed_shots >= max_misses:
+                        state = GAME_OVER
+
+        clock.tick(60)
+
+    elif state == GAME_OVER:
+        screen.blit(background, (0, 0))
+        draw_text("GAME OVER", 100, WIDTH // 2, HEIGHT // 3)
+        draw_text(f"Je score: {score}", 60, WIDTH // 2, HEIGHT // 2)
+        draw_text("Klik om opnieuw te spelen", 50, WIDTH // 2, HEIGHT // 2 + 80)
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                state = START
+
+pygame.quit()
+sys.exit()
